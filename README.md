@@ -1,3 +1,5 @@
+> **Fork Notice**: This is a personal fork with enhanced custom fields support for the `move` command. The implementation follows the KISS (Keep It Simple, Stupid) principle, adding only ~60 lines of code while reusing existing validation infrastructure. See [docs/features/move-custom-fields.md](docs/features/move-custom-fields.md) for details.
+
 <div align="center">
     <a href="#">
         <img alt="stargazers over time" src="https://stars.medv.io/ankitpokhrel/jira-cli.svg" />
@@ -436,7 +438,13 @@ $ jira issue move ISSUE-1 "In Progress" --comment "Started working on it"
 
 # Set resolution to fixed and assign to self while moving the issue
 $ jira issue move ISSUE-1 Done -RFixed -a$(jira me)
+
+# Set custom fields while moving the issue
+$ jira issue move ISSUE-1 "In Progress" --custom story-points=5
+$ jira issue move ISSUE-1 Done --custom environment=production --custom tags=bug,urgent
 ```
+
+You can use the `--custom` flag to set custom fields while transitioning issues. Custom fields must be configured in `.jira/config.yml` for validation. See [docs/features/move-custom-fields.md](docs/features/move-custom-fields.md) for more details.
 
 To transition the selected issue from the TUI, press `m`.
 
