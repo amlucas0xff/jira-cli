@@ -94,6 +94,7 @@ func create(cmd *cobra.Command, _ []string) {
 	}
 
 	cmdutil.ExitIfError(cc.setIssueTypes())
+	cmdutil.ExitIfError(cc.resolveIssueTypeID())
 	cmdutil.ExitIfError(cc.askQuestions())
 
 	if !params.NoInput {
@@ -104,6 +105,38 @@ func create(cmd *cobra.Command, _ []string) {
 	params.Reporter = cmdcommon.GetRelevantUser(client, project, params.Reporter)
 	params.Assignee = cmdcommon.GetRelevantUser(client, project, params.Assignee)
 
+	// Validate custom fields against issue type's available fields
+	if len(params.CustomFields) > 0 {
+		if params.IssueTypeID == "" {
+			cmdutil.Failed("Issue type ID not resolved. Cannot validate custom fields.")
+		}
+
+		configuredCustomFields, err := cmdcommon.GetConfiguredCustomFields()
+		if err != nil {
+			cmdutil.Failed("Failed to get configured custom fields: %s", err)
+		}
+
+		s := cmdutil.Info("Validating custom fields...")
+		availableFields, err := client.GetIssueTypeFields(project, params.IssueTypeID)
+		s.Stop()
+
+		if err != nil {
+			cmdutil.Failed("Failed to fetch available fields for validation: %s", err)
+		}
+
+		validFields, err := cmdcommon.ValidateAndFilterCustomFields(
+			params.CustomFields,
+			availableFields,
+			configuredCustomFields,
+			params.IssueType,
+		)
+		if err != nil {
+			cmdutil.Failed("%s", err)
+		}
+
+		params.CustomFields = validFields
+	}
+
 	issue, err := func() (*jira.CreateResponse, error) {
 		s := cmdutil.Info("Creating an issue...")
 		defer s.Stop()
@@ -111,6 +144,7 @@ func create(cmd *cobra.Command, _ []string) {
 		cr := jira.CreateRequest{
 			Project:          project,
 			IssueType:        params.IssueType,
+			IssueTypeID:      params.IssueTypeID,
 			ParentIssueKey:   params.ParentIssueKey,
 			Summary:          params.Summary,
 			Body:             params.Body,
@@ -128,7 +162,6 @@ func create(cmd *cobra.Command, _ []string) {
 		cr.ForProjectType(projectType)
 		cr.ForInstallationType(installation)
 		if configuredCustomFields, err := cmdcommon.GetConfiguredCustomFields(); err == nil {
-			cmdcommon.ValidateCustomFields(cr.CustomFields, configuredCustomFields)
 			cr.WithCustomFields(configuredCustomFields)
 		}
 
@@ -189,6 +222,19 @@ func (cc *createCmd) setIssueTypes() error {
 	return nil
 }
 
+func (cc *createCmd) resolveIssueTypeID() error {
+	// If IssueType is set but IssueTypeID is not, resolve the ID from the name
+	if cc.params.IssueType != "" && cc.params.IssueTypeID == "" {
+		for _, t := range cc.issueTypes {
+			if t.Name == cc.params.IssueType || t.Handle == cc.params.IssueType {
+				cc.params.IssueTypeID = t.ID
+				break
+			}
+		}
+	}
+	return nil
+}
+
 func (cc *createCmd) getIssueType() *survey.Question {
 	var qs *survey.Question
 
@@ -228,8 +274,10 @@ func (cc *createCmd) askQuestions() error {
 			for _, t := range cc.issueTypes {
 				if t.Handle != "" && fmt.Sprintf("%s (%s)", t.Name, t.Handle) == ans.IssueType {
 					cc.params.IssueType = t.Handle
+					cc.params.IssueTypeID = t.ID
 				} else if t.Name == ans.IssueType {
 					cc.params.IssueType = t.Name
+					cc.params.IssueTypeID = t.ID
 				}
 			}
 		}

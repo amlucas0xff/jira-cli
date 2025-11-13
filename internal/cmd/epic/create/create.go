@@ -93,6 +93,41 @@ func create(cmd *cobra.Command, _ []string) {
 	params.Reporter = cmdcommon.GetRelevantUser(client, project, params.Reporter)
 	params.Assignee = cmdcommon.GetRelevantUser(client, project, params.Assignee)
 
+	// Resolve Epic issue type ID from configured issue types
+	epicTypeID := cc.getEpicTypeID()
+
+	// Validate custom fields against Epic issue type's available fields
+	if len(params.CustomFields) > 0 {
+		if epicTypeID == "" {
+			cmdutil.Failed("Epic issue type ID not resolved. Cannot validate custom fields.")
+		}
+
+		configuredCustomFields, err := cmdcommon.GetConfiguredCustomFields()
+		if err != nil {
+			cmdutil.Failed("Failed to get configured custom fields: %s", err)
+		}
+
+		s := cmdutil.Info("Validating custom fields...")
+		availableFields, err := client.GetIssueTypeFields(project, epicTypeID)
+		s.Stop()
+
+		if err != nil {
+			cmdutil.Failed("Failed to fetch available fields for validation: %s", err)
+		}
+
+		validFields, err := cmdcommon.ValidateAndFilterCustomFields(
+			params.CustomFields,
+			availableFields,
+			configuredCustomFields,
+			jira.IssueTypeEpic,
+		)
+		if err != nil {
+			cmdutil.Failed("%s", err)
+		}
+
+		params.CustomFields = validFields
+	}
+
 	key, err := func() (string, error) {
 		s := cmdutil.Info("Creating an epic...")
 		defer s.Stop()
@@ -100,6 +135,7 @@ func create(cmd *cobra.Command, _ []string) {
 		cr := jira.CreateRequest{
 			Project:         project,
 			IssueType:       jira.IssueTypeEpic,
+			IssueTypeID:     epicTypeID,
 			Summary:         params.Summary,
 			Body:            params.Body,
 			Reporter:        params.Reporter,
@@ -118,7 +154,6 @@ func create(cmd *cobra.Command, _ []string) {
 		cr.ForProjectType(projectType)
 		cr.ForInstallationType(installation)
 		if configuredCustomFields, err := cmdcommon.GetConfiguredCustomFields(); err == nil {
-			cmdcommon.ValidateCustomFields(cr.CustomFields, configuredCustomFields)
 			cr.WithCustomFields(configuredCustomFields)
 		}
 
@@ -202,6 +237,28 @@ func (cc *createCmd) isNonInteractive() bool {
 
 func (cc *createCmd) isMandatoryParamsMissing() bool {
 	return cc.params.Summary == "" || cc.params.Name == ""
+}
+
+func (cc *createCmd) getEpicTypeID() string {
+	// Try to get Epic issue type ID from configured issue types
+	availableTypes, ok := viper.Get("issue.types").([]interface{})
+	if !ok {
+		return ""
+	}
+
+	for _, at := range availableTypes {
+		tp := at.(map[string]interface{})
+		name := tp["name"].(string)
+		handle, _ := tp["handle"].(string)
+
+		if name == jira.IssueTypeEpic || handle == jira.IssueTypeEpic {
+			if id, ok := tp["id"].(string); ok {
+				return id
+			}
+		}
+	}
+
+	return ""
 }
 
 func parseFlags(flags query.FlagParser) *cmdcommon.CreateParams {

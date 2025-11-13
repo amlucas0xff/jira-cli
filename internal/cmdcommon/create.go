@@ -1,6 +1,7 @@
 package cmdcommon
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
@@ -25,6 +26,7 @@ const (
 type CreateParams struct {
 	Name             string
 	IssueType        string
+	IssueTypeID      string // ID of the issue type, used for API calls
 	ParentIssueKey   string
 	Summary          string
 	Body             string
@@ -267,4 +269,94 @@ Invalid custom fields used in the command: %s`,
 			strings.Join(invalidCustomFields, ", "),
 		)
 	}
+}
+
+// ValidateAndFilterCustomFields validates custom fields against available fields for an issue type.
+// Returns filtered valid fields and an error if any invalid fields are found.
+func ValidateAndFilterCustomFields(
+	requested map[string]string,
+	available []jira.IssueTypeField,
+	configuredFields []jira.IssueTypeField,
+	issueTypeName string,
+) (map[string]string, error) {
+	if len(requested) == 0 {
+		return requested, nil
+	}
+
+	// Build map of configured field names to field keys for name normalization
+	configuredMap := make(map[string]string)
+	for _, field := range configuredFields {
+		identifier := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(field.Name)), " ", "-")
+		configuredMap[identifier] = field.Key
+	}
+
+	// Build map of available field keys for this issue type
+	availableMap := make(map[string]jira.IssueTypeField)
+	for _, field := range available {
+		availableMap[field.Key] = field
+	}
+
+	validFields := make(map[string]string)
+	invalidFields := make([]string, 0)
+	var invalidFieldKeys []string
+
+	for requestedName, value := range requested {
+		// Get the field key from configured fields
+		fieldKey, exists := configuredMap[strings.ToLower(requestedName)]
+		if !exists {
+			invalidFields = append(invalidFields, requestedName)
+			continue
+		}
+
+		// Check if this field key is available for the issue type
+		if _, available := availableMap[fieldKey]; available {
+			validFields[requestedName] = value
+		} else {
+			invalidFields = append(invalidFields, requestedName)
+			invalidFieldKeys = append(invalidFieldKeys, fieldKey)
+		}
+	}
+
+	if len(invalidFields) > 0 {
+		// Build helpful error message with available custom fields
+		availableCustomFields := make([]string, 0)
+		for _, field := range available {
+			// Only show custom fields (they start with "customfield_")
+			if strings.HasPrefix(field.Key, "customfield_") && field.Name != "" {
+				identifier := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(field.Name)), " ", "-")
+				availableCustomFields = append(availableCustomFields, identifier)
+			}
+		}
+
+		errMsg := fmt.Sprintf(
+			"Invalid custom fields for issue type '%s': %s\n\n"+
+				"These fields are not available on the create/edit screen for this issue type.\n"+
+				"This is a Jira project configuration issue, not a CLI problem.\n\n",
+			issueTypeName,
+			strings.Join(invalidFields, ", "),
+		)
+
+		if len(invalidFieldKeys) > 0 {
+			errMsg += fmt.Sprintf("Field IDs: %s\n\n", strings.Join(invalidFieldKeys, ", "))
+		}
+
+		if len(availableCustomFields) > 0 {
+			errMsg += fmt.Sprintf(
+				"Available custom fields for '%s':\n  %s\n\n",
+				issueTypeName,
+				strings.Join(availableCustomFields, "\n  "),
+			)
+		} else {
+			errMsg += "No custom fields are available for this issue type.\n\n"
+		}
+
+		errMsg += "To fix this:\n" +
+			"1. Check your Jira project's screen configuration\n" +
+			"2. Add the required fields to the issue type's create screen\n" +
+			"3. Or use only the fields listed as available above"
+
+		return nil, fmt.Errorf(errMsg)
+	}
+
+	return validFields, nil
 }

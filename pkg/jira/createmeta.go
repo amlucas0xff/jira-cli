@@ -98,3 +98,31 @@ func (c *Client) GetCreateMetaForJiraServerV9(req *CreateMetaRequest) (*CreateMe
 
 	return &out, err
 }
+
+// GetIssueTypeFields retrieves available fields for a specific issue type in a project.
+// This is used to validate custom fields before creating an issue.
+func (c *Client) GetIssueTypeFields(project, issueTypeID string) ([]IssueTypeField, error) {
+	meta, err := c.GetCreateMeta(&CreateMetaRequest{
+		Projects: project,
+		Expand:   "projects.issuetypes.fields",
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(meta.Projects) == 0 {
+		return nil, fmt.Errorf("no project found for key: %s", project)
+	}
+
+	for _, issueType := range meta.Projects[0].IssueTypes {
+		if issueType.ID == issueTypeID {
+			fields := make([]IssueTypeField, 0, len(issueType.Fields))
+			for _, field := range issueType.Fields {
+				fields = append(fields, field)
+			}
+			return fields, nil
+		}
+	}
+
+	return nil, fmt.Errorf("issue type with ID %s not found in project %s", issueTypeID, project)
+}

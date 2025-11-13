@@ -22,6 +22,9 @@ type CreateRequest struct {
 	Project   string
 	Name      string
 	IssueType string
+	// IssueTypeID is the ID of the issue type to create.
+	// When set, this takes precedence over IssueType for API calls.
+	IssueTypeID string
 	// ParentIssueKey is required when creating a sub-task for classic project.
 	// This can also be used to attach epic for next-gen project.
 	ParentIssueKey   string
@@ -122,13 +125,23 @@ func (*Client) getRequestData(req *CreateRequest) *createRequest {
 		req.Labels = []string{}
 	}
 
+	// Use IssueTypeID if available, otherwise fall back to IssueType name
+	var issueType interface{}
+	if req.IssueTypeID != "" {
+		issueType = struct {
+			ID string `json:"id"`
+		}{ID: req.IssueTypeID}
+	} else {
+		issueType = struct {
+			Name string `json:"name"`
+		}{Name: req.IssueType}
+	}
+
 	cf := createFields{
 		Project: struct {
 			Key string `json:"key"`
 		}{Key: req.Project},
-		IssueType: struct {
-			Name string `json:"name"`
-		}{Name: req.IssueType},
+		IssueType: issueType,
 		Name:      req.Name,
 		Summary:   req.Summary,
 		Labels:    req.Labels,
@@ -153,7 +166,8 @@ func (*Client) getRequestData(req *CreateRequest) *createRequest {
 			subtaskField = req.SubtaskField
 		}
 
-		if req.projectType == ProjectTypeNextGen || strings.EqualFold(data.Fields.M.IssueType.Name, subtaskField) {
+		// Use the IssueType name from the request for comparison
+		if req.projectType == ProjectTypeNextGen || strings.EqualFold(req.IssueType, subtaskField) {
 			data.Fields.M.Parent = &struct {
 				Key string `json:"key"`
 			}{Key: req.ParentIssueKey}
@@ -286,10 +300,8 @@ type createFields struct {
 	Project struct {
 		Key string `json:"key"`
 	} `json:"project"`
-	IssueType struct {
-		Name string `json:"name"`
-	} `json:"issuetype"`
-	Parent *struct {
+	IssueType interface{} `json:"issuetype"` // Can be either {id: string} or {name: string}
+	Parent    *struct {
 		Key string `json:"key"`
 	} `json:"parent,omitempty"`
 	Name        string           `json:"name,omitempty"`
