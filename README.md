@@ -7,7 +7,7 @@
 
 ## Fork Changes
 
-This fork adds two key enhancements to prevent frustration and improve workflow:
+This fork adds two key enhancements:
 
 ### 1. Custom Field Validation for Issue Creation
 
