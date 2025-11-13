@@ -105,6 +105,38 @@ func create(cmd *cobra.Command, _ []string) {
 	params.Reporter = cmdcommon.GetRelevantUser(client, project, params.Reporter)
 	params.Assignee = cmdcommon.GetRelevantUser(client, project, params.Assignee)
 
+	// Validate custom fields against issue type's available fields
+	if len(params.CustomFields) > 0 {
+		if params.IssueTypeID == "" {
+			cmdutil.Failed("Issue type ID not resolved. Cannot validate custom fields.")
+		}
+
+		configuredCustomFields, err := cmdcommon.GetConfiguredCustomFields()
+		if err != nil {
+			cmdutil.Failed("Failed to get configured custom fields: %s", err)
+		}
+
+		s := cmdutil.Info("Validating custom fields...")
+		availableFields, err := client.GetIssueTypeFields(project, params.IssueTypeID)
+		s.Stop()
+
+		if err != nil {
+			cmdutil.Failed("Failed to fetch available fields for validation: %s", err)
+		}
+
+		validFields, err := cmdcommon.ValidateAndFilterCustomFields(
+			params.CustomFields,
+			availableFields,
+			configuredCustomFields,
+			params.IssueType,
+		)
+		if err != nil {
+			cmdutil.Failed("%s", err)
+		}
+
+		params.CustomFields = validFields
+	}
+
 	issue, err := func() (*jira.CreateResponse, error) {
 		s := cmdutil.Info("Creating an issue...")
 		defer s.Stop()
@@ -130,7 +162,6 @@ func create(cmd *cobra.Command, _ []string) {
 		cr.ForProjectType(projectType)
 		cr.ForInstallationType(installation)
 		if configuredCustomFields, err := cmdcommon.GetConfiguredCustomFields(); err == nil {
-			cmdcommon.ValidateCustomFields(cr.CustomFields, configuredCustomFields)
 			cr.WithCustomFields(configuredCustomFields)
 		}
 

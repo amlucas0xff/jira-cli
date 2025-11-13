@@ -96,6 +96,38 @@ func create(cmd *cobra.Command, _ []string) {
 	// Resolve Epic issue type ID from configured issue types
 	epicTypeID := cc.getEpicTypeID()
 
+	// Validate custom fields against Epic issue type's available fields
+	if len(params.CustomFields) > 0 {
+		if epicTypeID == "" {
+			cmdutil.Failed("Epic issue type ID not resolved. Cannot validate custom fields.")
+		}
+
+		configuredCustomFields, err := cmdcommon.GetConfiguredCustomFields()
+		if err != nil {
+			cmdutil.Failed("Failed to get configured custom fields: %s", err)
+		}
+
+		s := cmdutil.Info("Validating custom fields...")
+		availableFields, err := client.GetIssueTypeFields(project, epicTypeID)
+		s.Stop()
+
+		if err != nil {
+			cmdutil.Failed("Failed to fetch available fields for validation: %s", err)
+		}
+
+		validFields, err := cmdcommon.ValidateAndFilterCustomFields(
+			params.CustomFields,
+			availableFields,
+			configuredCustomFields,
+			jira.IssueTypeEpic,
+		)
+		if err != nil {
+			cmdutil.Failed("%s", err)
+		}
+
+		params.CustomFields = validFields
+	}
+
 	key, err := func() (string, error) {
 		s := cmdutil.Info("Creating an epic...")
 		defer s.Stop()
@@ -122,7 +154,6 @@ func create(cmd *cobra.Command, _ []string) {
 		cr.ForProjectType(projectType)
 		cr.ForInstallationType(installation)
 		if configuredCustomFields, err := cmdcommon.GetConfiguredCustomFields(); err == nil {
-			cmdcommon.ValidateCustomFields(cr.CustomFields, configuredCustomFields)
 			cr.WithCustomFields(configuredCustomFields)
 		}
 
