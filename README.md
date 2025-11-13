@@ -1,5 +1,3 @@
-> **Fork Notice**: This is a personal fork with enhanced custom fields support for the `move` command. The implementation follows the KISS (Keep It Simple, Stupid) principle, adding only ~60 lines of code while reusing existing validation infrastructure. See [docs/features/move-custom-fields.md](docs/features/move-custom-fields.md) for details.
-
 <div align="center">
     <a href="#">
         <img alt="stargazers over time" src="https://stars.medv.io/ankitpokhrel/jira-cli.svg" />
@@ -8,6 +6,10 @@
 </div>
 
 ## Fork Changes
+
+This fork adds two key enhancements to prevent frustration and improve workflow:
+
+### 1. Custom Field Validation for Issue Creation
 
 This fork adds **custom field validation** to prevent cryptic Jira API errors when creating issues.
 
@@ -20,6 +22,32 @@ This fork adds **custom field validation** to prevent cryptic Jira API errors wh
 - Prevents wasted API calls and confusing error messages
 
 **Technical Details**: See [commit 4925dd9](https://github.com/amlucas0xff/jira-cli/commit/4925dd9) - Adds `GetIssueTypeFields()` method and `ValidateAndFilterCustomFields()` helper.
+
+### 2. Custom Fields Support for Move Command
+
+This fork adds **custom fields support for issue transitions** using the KISS principle.
+
+**Problem Solved**: The upstream `jira issue move` command allows setting standard fields (assignee, resolution, comment) during transitions, but doesn't support custom fields. This requires making separate API calls to update custom fields after transitioning, breaking workflow automation.
+
+**Solution**: Add `--custom` flag to move command that:
+- Accepts custom field key-value pairs (e.g., `--custom story-points=5`)
+- Reuses existing validation infrastructure from issue creation
+- Supports all custom field types (string, number, option, project, array)
+- Maintains backward compatibility with existing commands
+
+**Technical Details**:
+- See [docs/features/move-custom-fields.md](docs/features/move-custom-fields.md) for comprehensive documentation
+- Implementation: ~60 lines of code across 3 files
+- Commits: [66083be](https://github.com/amlucas0xff/jira-cli/commit/66083be) (API layer), [24ee2f9](https://github.com/amlucas0xff/jira-cli/commit/24ee2f9) (command layer), [46b75f1](https://github.com/amlucas0xff/jira-cli/commit/46b75f1) (tests)
+
+**Usage Examples**:
+```bash
+# Single custom field
+jira issue move ISSUE-1 "In Progress" --custom story-points=5
+
+# Multiple custom fields
+jira issue move ISSUE-1 Done --custom environment=production --custom tags=bug,urgent
+```
 
 **Installation**:
 ```bash
