@@ -5,13 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
+	"strings"
 )
 
 // TransitionRequest struct holds request data for issue transition request.
 type TransitionRequest struct {
-	Update     *TransitionRequestUpdate `json:"update,omitempty"`
-	Fields     *TransitionRequestFields `json:"fields,omitempty"`
-	Transition *TransitionRequestData   `json:"transition"`
+	Update     *TransitionRequestUpdate    `json:"update,omitempty"`
+	Fields     *transitionFieldsMarshaler  `json:"fields,omitempty"`
+	Transition *TransitionRequestData      `json:"transition"`
 }
 
 // TransitionRequestUpdate struct holds a list of operations to perform on the issue screen field.
@@ -31,12 +33,42 @@ type TransitionRequestFields struct {
 	Resolution *struct {
 		Name string `json:"name"`
 	} `json:"resolution,omitempty"`
+
+	customFields customField
 }
 
 // TransitionRequestData is a transition request data.
 type TransitionRequestData struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+// transitionFieldsMarshaler is a custom marshaler to handle custom fields.
+type transitionFieldsMarshaler struct {
+	M TransitionRequestFields
+}
+
+// MarshalJSON is a custom marshaler to handle dynamic custom fields.
+func (tfm transitionFieldsMarshaler) MarshalJSON() ([]byte, error) {
+	// Marshal the struct normally
+	m, err := json.Marshal(tfm.M)
+	if err != nil {
+		return m, err
+	}
+
+	// Unmarshal to map so we can inject custom fields
+	var temp interface{}
+	if err := json.Unmarshal(m, &temp); err != nil {
+		return nil, err
+	}
+	dm := temp.(map[string]interface{})
+
+	// Inject custom fields into the map
+	for key, val := range tfm.M.customFields {
+		dm[key] = val
+	}
+
+	return json.Marshal(dm)
 }
 
 type transitionResponse struct {
@@ -113,4 +145,62 @@ func (c *Client) Transition(key string, data *TransitionRequest) (int, error) {
 		return res.StatusCode, formatUnexpectedResponse(res)
 	}
 	return res.StatusCode, nil
+}
+
+// NewTransitionFieldsMarshaler creates a new transition fields marshaler with custom fields.
+func NewTransitionFieldsMarshaler(fields TransitionRequestFields, customFields customField) *transitionFieldsMarshaler {
+	fields.customFields = customFields
+	return &transitionFieldsMarshaler{M: fields}
+}
+
+// BuildCustomFieldsForTransition constructs custom fields map for transitions.
+// This is extracted from constructCustomFields() in create.go.
+func BuildCustomFieldsForTransition(fields map[string]string, configuredFields []IssueTypeField) customField {
+	if len(fields) == 0 || len(configuredFields) == 0 {
+		return nil
+	}
+
+	cf := make(customField)
+
+	for key, val := range fields {
+		for _, configured := range configuredFields {
+			identifier := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(configured.Name)), " ", "-")
+			if identifier != strings.ToLower(key) {
+				continue
+			}
+
+			switch configured.Schema.DataType {
+			case customFieldFormatOption:
+				cf[configured.Key] = customFieldTypeOption{Value: val}
+			case customFieldFormatProject:
+				cf[configured.Key] = customFieldTypeProject{Value: val}
+			case customFieldFormatArray:
+				pieces := strings.Split(strings.TrimSpace(val), ",")
+				if configured.Schema.Items == customFieldFormatOption {
+					items := make([]customFieldTypeOption, 0)
+					for _, p := range pieces {
+						items = append(items, customFieldTypeOption{Value: strings.TrimSpace(p)})
+					}
+					cf[configured.Key] = items
+				} else {
+					trimmed := make([]string, 0, len(pieces))
+					for _, p := range pieces {
+						trimmed = append(trimmed, strings.TrimSpace(p))
+					}
+					cf[configured.Key] = trimmed
+				}
+			case customFieldFormatNumber:
+				num, err := strconv.ParseFloat(val, 64)
+				if err != nil {
+					cf[configured.Key] = val
+				} else {
+					cf[configured.Key] = customFieldTypeNumber(num)
+				}
+			default:
+				cf[configured.Key] = val
+			}
+		}
+	}
+
+	return cf
 }
