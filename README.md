@@ -5,6 +5,27 @@
     <h1 align="center">JiraCLI</h1>
 </div>
 
+## Fork Changes
+
+This fork adds **custom field validation** to prevent cryptic Jira API errors when creating issues.
+
+**Problem Solved**: The upstream version stores all custom fields globally but doesn't validate which fields are available for specific issue types. This causes confusing API errors like "Field 'customfield_xxxxx' cannot be set" when you try to use a custom field that exists in your Jira instance but isn't configured for that particular issue type's screen.
+
+**Solution**: Pre-flight validation that:
+- Fetches available fields for the specific project + issue type combination
+- Validates requested custom fields before making API calls
+- Provides clear error messages showing which fields are invalid and which are available
+- Prevents wasted API calls and confusing error messages
+
+**Technical Details**: See [commit 4925dd9](https://github.com/amlucas0xff/jira-cli/commit/4925dd9) - Adds `GetIssueTypeFields()` method and `ValidateAndFilterCustomFields()` helper.
+
+**Installation**:
+```bash
+go install github.com/amlucas0xff/jira-cli/cmd/jira@fix/use-issuetype-id-instead-of-name
+```
+
+---
+
 <div>
     <p align="center">
         <a href="https://github.com/ankitpokhrel/jira-cli/actions?query=workflow%3Abuild+branch%3Amaster">
