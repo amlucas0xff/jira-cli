@@ -21,7 +21,7 @@ This fork adds **custom field validation** to prevent cryptic Jira API errors wh
 
 **Installation**:
 ```bash
-go install github.com/amlucas0xff/jira-cli/cmd/jira@fix/use-issuetype-id-instead-of-name
+go install github.com/amlucas0xff/jira-cli/cmd/jira@latest
 ```
 
 ---
