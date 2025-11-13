@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/ankitpokhrel/jira-cli/api"
+	"github.com/ankitpokhrel/jira-cli/internal/cmdcommon"
 	"github.com/ankitpokhrel/jira-cli/internal/cmdutil"
 	"github.com/ankitpokhrel/jira-cli/internal/query"
 	"github.com/ankitpokhrel/jira-cli/pkg/jira"
@@ -18,7 +19,9 @@ import (
 const (
 	helpText = `Move transitions an issue from one state to another.`
 	examples = `$ jira issue move ISSUE-1 "In Progress"
-$ jira issue move ISSUE-1 Done`
+$ jira issue move ISSUE-1 Done
+$ jira issue move ISSUE-1 "In Progress" --custom story-points=5
+$ jira issue move ISSUE-1 Done --assignee jane --custom environment=production`
 
 	optionCancel = "Cancel"
 )
@@ -43,6 +46,7 @@ STATE		State you want to transition the issue to`,
 	cmd.Flags().String("comment", "", "Add comment to the issue")
 	cmd.Flags().StringP("assignee", "a", "", "Assign issue to a user")
 	cmd.Flags().StringP("resolution", "R", "", "Set resolution")
+	cmd.Flags().StringToString("custom", map[string]string{}, "Set custom fields")
 	cmd.Flags().Bool("web", false, "Open issue in web browser after successful transition")
 
 	return &cmd
@@ -104,8 +108,21 @@ func move(cmd *cobra.Command, args []string) {
 			}
 		}
 
+		// Handle custom fields if provided
+		var customFieldsData map[string]interface{}
+		if len(mc.params.customFields) > 0 {
+			configuredFields, err := cmdcommon.GetConfiguredCustomFields()
+			if err == nil {
+				cmdcommon.ValidateCustomFields(mc.params.customFields, configuredFields)
+				customFieldsData = jira.BuildCustomFieldsForTransition(mc.params.customFields, configuredFields)
+			}
+		}
+
+		// Create the fields marshaler with custom fields
+		fieldsMarshaler := jira.NewTransitionFieldsMarshaler(trFieldsReq, customFieldsData)
+
 		_, err := client.Transition(mc.params.key, &jira.TransitionRequest{
-			Fields: &trFieldsReq,
+			Fields: fieldsMarshaler,
 			Update: &trUpdateReq,
 			Transition: &jira.TransitionRequestData{
 				ID:   tr.ID.String(),
@@ -128,12 +145,13 @@ func move(cmd *cobra.Command, args []string) {
 }
 
 type moveParams struct {
-	key        string
-	state      string
-	comment    string
-	assignee   string
-	resolution string
-	debug      bool
+	key          string
+	state        string
+	comment      string
+	assignee     string
+	resolution   string
+	customFields map[string]string
+	debug        bool
 }
 
 func parseArgsAndFlags(flags query.FlagParser, args []string, project string) *moveParams {
@@ -156,16 +174,20 @@ func parseArgsAndFlags(flags query.FlagParser, args []string, project string) *m
 	resolution, err := flags.GetString("resolution")
 	cmdutil.ExitIfError(err)
 
+	customFields, err := flags.GetStringToString("custom")
+	cmdutil.ExitIfError(err)
+
 	debug, err := flags.GetBool("debug")
 	cmdutil.ExitIfError(err)
 
 	return &moveParams{
-		key:        key,
-		state:      state,
-		comment:    comment,
-		assignee:   assignee,
-		resolution: resolution,
-		debug:      debug,
+		key:          key,
+		state:        state,
+		comment:      comment,
+		assignee:     assignee,
+		resolution:   resolution,
+		customFields: customFields,
+		debug:        debug,
 	}
 }
 
