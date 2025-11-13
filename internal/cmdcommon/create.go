@@ -25,6 +25,7 @@ const (
 type CreateParams struct {
 	Name             string
 	IssueType        string
+	IssueTypeID      string // ID of the issue type, used for API calls
 	ParentIssueKey   string
 	Summary          string
 	Body             string

@@ -79,6 +79,7 @@ func clone(cmd *cobra.Command, args []string) {
 		cr := jira.CreateRequest{
 			Project:        project,
 			IssueType:      issue.Fields.IssueType.Name,
+			IssueTypeID:    issue.Fields.IssueType.ID,
 			ParentIssueKey: cp.parent,
 			Summary:        cp.summary,
 			Body:           cp.body,

@@ -94,6 +94,7 @@ func create(cmd *cobra.Command, _ []string) {
 	}
 
 	cmdutil.ExitIfError(cc.setIssueTypes())
+	cmdutil.ExitIfError(cc.resolveIssueTypeID())
 	cmdutil.ExitIfError(cc.askQuestions())
 
 	if !params.NoInput {
@@ -111,6 +112,7 @@ func create(cmd *cobra.Command, _ []string) {
 		cr := jira.CreateRequest{
 			Project:          project,
 			IssueType:        params.IssueType,
+			IssueTypeID:      params.IssueTypeID,
 			ParentIssueKey:   params.ParentIssueKey,
 			Summary:          params.Summary,
 			Body:             params.Body,
@@ -189,6 +191,19 @@ func (cc *createCmd) setIssueTypes() error {
 	return nil
 }
 
+func (cc *createCmd) resolveIssueTypeID() error {
+	// If IssueType is set but IssueTypeID is not, resolve the ID from the name
+	if cc.params.IssueType != "" && cc.params.IssueTypeID == "" {
+		for _, t := range cc.issueTypes {
+			if t.Name == cc.params.IssueType || t.Handle == cc.params.IssueType {
+				cc.params.IssueTypeID = t.ID
+				break
+			}
+		}
+	}
+	return nil
+}
+
 func (cc *createCmd) getIssueType() *survey.Question {
 	var qs *survey.Question
 
@@ -228,8 +243,10 @@ func (cc *createCmd) askQuestions() error {
 			for _, t := range cc.issueTypes {
 				if t.Handle != "" && fmt.Sprintf("%s (%s)", t.Name, t.Handle) == ans.IssueType {
 					cc.params.IssueType = t.Handle
+					cc.params.IssueTypeID = t.ID
 				} else if t.Name == ans.IssueType {
 					cc.params.IssueType = t.Name
+					cc.params.IssueTypeID = t.ID
 				}
 			}
 		}
